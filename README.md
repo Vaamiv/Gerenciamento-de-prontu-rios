@@ -1,3 +1,5 @@
+<img width="806" height="952" alt="image" src="https://github.com/user-attachments/assets/0bb673e5-24a7-4d74-b4b8-cd8135e84b37" />
+
 # Sistema de Gerenciamento de Prontuários HSP  
 *(HTML + Tailwind + IndexedDB, 100% client-side)*
 
@@ -120,18 +122,3 @@ Como é só um `index.html`, você pode hospedar em:
 Uso livre para fins internos. Se desejar, você pode aplicar **MIT**.
 
 ---
-
-## 📌 Roadmap (opcional)
-
-- Ordenação **alfabética** por paciente (dropdown com: *Mais recentes*, *Mais antigos*, *A-Z*)
-- Paginação ou “carregar mais”
-- Busca por data (se necessário no futuro)
-- Service Worker + assets locais (PWA)
-
----
-
-## 🤝 Contribuindo
-
-- Abra o `index.html` e edite — tudo está em um arquivo.
-- Mantenha os IDs e a estrutura do **backup** compatíveis.
-- Teste: cadastro, filtros, ordenação, export/import.
