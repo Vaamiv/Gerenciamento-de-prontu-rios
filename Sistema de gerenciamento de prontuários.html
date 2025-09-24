@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema de Gerenciamento de Prontuários (Offline - IndexedDB)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+  <div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <h1 class="text-4xl font-bold text-indigo-800 mb-2">
+        <i class="fas fa-file-medical mr-3"></i>
+        Sistema de Gerenciamento de Prontuários HSP
+      </h1>
+      <p class="text-gray-600">Gerencie prontuários médicos de forma eficiente e organizada</p>
+    </div>
+      <div class="flex justify-center gap-2 mb-6">
+        <button id="btnExport"
+          class="bg-emerald-600 text-white px-4 py-2 rounded-lg shadow hover:bg-emerald-700 transition flex items-center gap-2"
+          title="Exportar backup (.zip)">
+          <i class="fa-solid fa-file-export"></i><span class="hidden sm:inline">Exportar</span>
+        </button>
+        <label
+          class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 transition flex items-center gap-2 cursor-pointer"
+          title="Importar backup (.zip)">
+          <i class="fa-solid fa-file-import"></i><span class="hidden sm:inline">Importar</span>
+          <input id="inputImport" type="file" accept=".zip" class="hidden" />
+        </label>
+      </div>
+    
+
+
+    <!-- Tabs -->
+    <div class="flex justify-center mb-8">
+      <div class="bg-white rounded-lg shadow-md p-1">
+        <button id="addTab"
+          class="px-6 py-3 rounded-md font-medium transition-all duration-200 bg-indigo-600 text-white">
+          <i class="fas fa-plus mr-2"></i>Adicionar Prontuário
+        </button>
+        <button id="consultTab"
+          class="px-6 py-3 rounded-md font-medium transition-all duration-200 text-indigo-600 hover:bg-indigo-50">
+          <i class="fas fa-search mr-2"></i>Consultar Pacientes
+        </button>
+      </div>
+    </div>
+
+    <!-- Adicionar -->
+    <div id="addSection" class="max-w-2xl mx-auto">
+      <div class="bg-white rounded-xl shadow-lg p-8">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-user-plus mr-2 text-indigo-600"></i>Novo
+          Prontuário</h2>
+        <form id="recordForm" class="space-y-6" autocomplete="off">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2" for="patientName"><i
+                class="fas fa-user mr-1"></i>Nome do Paciente</label>
+            <input type="text" id="patientName" required
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
+              placeholder="Nome completo" maxlength="120">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2" for="appointmentDate"><i
+                class="fas fa-calendar mr-1"></i>Data do atendimento</label>
+            <input type="date" id="appointmentDate" required
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2" for="appointmentType"><i
+                class="fas fa-stethoscope mr-1"></i>Tipo do atendimento</label>
+            <select id="appointmentType" required
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200">
+              <option value="">Selecione</option>
+              <option>FAA</option>
+              <option>Internação</option>
+              <option>Oftalmologia</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2" for="category"><i
+                class="fas fa-tags mr-1"></i>Categoria</label>
+            <select id="category" required
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200">
+              <option value="">Selecione</option>
+              <option>SUS</option>
+              <option>Particular HSP</option>
+              <option>IPE</option>
+              <option>PM Lagoa</option>
+              <option>Unimed</option>
+              <option>Outros</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2"><i class="fas fa-file-pdf mr-1"></i>Arquivo
+              PDF</label>
+            <div
+              class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors duration-200">
+              <input type="file" id="pdfFile" accept=".pdf" required class="hidden">
+              <div id="fileDropZone" class="cursor-pointer" aria-label="Selecione ou arraste o PDF">
+                <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-2"></i>
+                <p class="text-gray-600">Clique para selecionar ou arraste o PDF aqui</p>
+                <p class="text-sm text-gray-400 mt-1">Apenas PDF</p>
+              </div>
+              <div id="fileInfo" class="hidden">
+                <i class="fas fa-file-pdf text-red-500 text-2xl mb-2"></i>
+                <p id="fileName" class="text-gray-700 font-medium"></p>
+                <button type="button" id="removeFile" class="text-red-500 hover:text-red-700 text-sm mt-1">
+                  <i class="fas fa-times mr-1"></i>Remover arquivo
+                </button>
+              </div>
+            </div>
+          </div>
+          <button type="submit"
+            class="w-full bg-indigo-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all duration-200 transform hover:scale-105">
+            <i class="fas fa-save mr-2"></i>Registrar Prontuário
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Consultar -->
+    <div id="consultSection" class="hidden">
+      <div class="bg-white rounded-xl shadow-lg p-8">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-search mr-2 text-indigo-600"></i>Consultar
+          Pacientes</h2>
+
+        <!-- Filtros (sem data) -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+          <div class="md:col-span-2">
+            <div class="relative">
+              <input type="text" id="searchInput"
+                class="w-full px-4 py-3 pl-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
+                placeholder="Buscar por nome, tipo, categoria...">
+              <i class="fas fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
+          <div>
+            <select id="filterType" class="w-full px-3 py-3 border rounded-lg" title="Tipo">
+              <option value="">Tipo (todos)</option>
+              <option>FAA</option>
+              <option>Internação</option>
+              <option>Oftalmologia</option>
+            </select>
+          </div>
+          <div>
+            <select id="filterCategory" class="w-full px-3 py-3 border rounded-lg" title="Categoria">
+              <option value="">Categoria (todas)</option>
+              <option>SUS</option>
+              <option>Particular HSP</option>
+              <option>IPE</option>
+              <option>PM Lagoa</option>
+              <option>Unimed</option>
+              <option>Outros</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between mb-6">
+          <div class="text-sm text-gray-600" id="statsInfo">—</div>
+          <div class="flex gap-2">
+            <button id="btnClearFilters" class="text-gray-600 hover:text-gray-800 px-3 py-2 rounded-lg border">Limpar
+              filtros</button>
+            <button id="btnSort" class="px-3 py-2 rounded-lg border bg-gray-50 hover:bg-gray-100"
+              title="Alternar ordenação">
+              <i class="fa-solid fa-arrow-down-short-wide mr-1"></i><span id="sortLabel">Mais recentes</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="recordsList">
+          <div id="noRecords" class="text-center py-12">
+            <i class="fas fa-folder-open text-6xl text-gray-300 mb-4"></i>
+            <p class="text-gray-500 text-lg">Nenhum prontuário encontrado</p>
+            <p class="text-gray-400">Adicione prontuários para visualizá-los aqui</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal sucesso -->
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl p-8 max-w-md mx-4">
+      <div class="text-center">
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+          <i class="fas fa-check text-green-600 text-xl"></i>
+        </div>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">Prontuário Registrado!</h3>
+        <p class="text-gray-600 mb-6">Deseja adicionar outro para o mesmo paciente?</p>
+        <div class="flex flex-col sm:flex-row gap-3 justify-center">
+          <button id="modalAddAnother"
+            class="bg-indigo-600 text-white py-2 px-6 rounded-lg font-medium hover:bg-indigo-700">Adicionar
+            outro</button>
+          <button id="modalFinish"
+            class="bg-gray-200 text-gray-800 py-2 px-6 rounded-lg font-medium hover:bg-gray-300">Concluir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal edição -->
+  <div id="editModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full mx-4">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4"><i
+          class="fa-solid fa-pen-to-square mr-2 text-indigo-600"></i>Editar Prontuário</h3>
+      <form id="editForm" class="space-y-4">
+        <input type="hidden" id="editId">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="editPatientName">Nome do paciente</label>
+          <input id="editPatientName" type="text" class="w-full px-3 py-2 border rounded-lg" required maxlength="120">
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="editAppointmentDate">Data do
+              atendimento</label>
+            <input id="editAppointmentDate" type="date" class="w-full px-3 py-2 border rounded-lg" required>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="editAppointmentType">Tipo do
+              atendimento</label>
+            <select id="editAppointmentType" class="w-full px-3 py-2 border rounded-lg" required>
+              <option>FAA</option>
+              <option>Internação</option>
+              <option>Oftalmologia</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="editCategory">Categoria</label>
+            <select id="editCategory" class="w-full px-3 py-2 border rounded-lg" required>
+              <option>SUS</option>
+              <option>Particular HSP</option>
+              <option>IPE</option>
+              <option>PM Lagoa</option>
+              <option>Unimed</option>
+              <option>Outros</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Substituir PDF (opcional)</label>
+          <input id="editPdf" type="file" accept=".pdf" class="w-full">
+          <p class="text-xs text-gray-500 mt-1">Sem novo arquivo = mantém o atual.</p>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" id="editCancel" class="px-4 py-2 rounded-lg border">Cancelar</button>
+          <button type="submit"
+            class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="fixed bottom-4 right-4 space-y-2 z-[9999] pointer-events-none"></div>
+
+  <script>
+    const DB_NAME = 'medicalDB';
+    const DB_VERSION = 2;
+    const STORE = 'records';
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          let os = db.objectStoreNames.contains(STORE) ? req.transaction.objectStore(STORE) : db.createObjectStore(STORE, { keyPath: 'id' });
+          for (const key of ['patientName', 'appointmentDate', 'appointmentType', 'category']) {
+            if (!os.indexNames.contains(key)) os.createIndex(key, key, { unique: false });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function dbAddRecord(record) { const db = await openDB(); return new Promise((res, rej) => { const tx = db.transaction(STORE, 'readwrite'); tx.oncomplete = () => res(true); tx.onerror = () => rej(tx.error); tx.objectStore(STORE).add(record); }); }
+    async function dbUpdateRecord(record) { const db = await openDB(); return new Promise((res, rej) => { const tx = db.transaction(STORE, 'readwrite'); tx.oncomplete = () => res(true); tx.onerror = () => rej(tx.error); tx.objectStore(STORE).put(record); }); }
+    async function dbGetAll() { const db = await openDB(); return new Promise((res, rej) => { const tx = db.transaction(STORE, 'readonly'); const req = tx.objectStore(STORE).getAll(); req.onsuccess = () => res(req.result || []); req.onerror = () => rej(req.error); }); }
+    // Busca compatível: tenta por string e, se possível, por number (para base antiga)
+    async function dbGetById(maybeId) {
+      const db = await openDB();
+      return new Promise((res) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const store = tx.objectStore(STORE);
+        const tryNumber = !Number.isNaN(Number(maybeId)) && maybeId !== '' ? Number(maybeId) : null;
+        const req1 = store.get(maybeId);
+        req1.onsuccess = () => {
+          if (req1.result) return res(req1.result);
+          if (tryNumber !== null) {
+            const req2 = store.get(tryNumber);
+            req2.onsuccess = () => res(req2.result || null);
+            req2.onerror = () => res(null);
+          } else {
+            res(null);
+          }
+        };
+        req1.onerror = () => {
+          if (tryNumber !== null) {
+            const req2 = store.get(tryNumber);
+            req2.onsuccess = () => res(req2.result || null);
+            req2.onerror = () => res(null);
+          } else {
+            res(null);
+          }
+        };
+      });
+    }
+    async function dbDelete(id) { const db = await openDB(); return new Promise((res, rej) => { const tx = db.transaction(STORE, 'readwrite'); tx.oncomplete = () => res(true); tx.onerror = () => rej(tx.error); tx.objectStore(STORE).delete(id); }); }
+
+    function dataURLtoBlob(dataURL) {
+      const parts = (dataURL || '').split(',');
+      if (parts.length < 2) return null;
+      const mime = (parts[0].match(/data:(.*?);base64/) || [])[1] || 'application/pdf';
+      const bin = atob(parts[1]); const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Blob([bytes], { type: mime });
+    }
+    async function migrateFromLocalStorage() {
+      const legacy = localStorage.getItem('medicalRecords') || localStorage.getItem('records') || localStorage.getItem('prontuarios');
+      if (!legacy) return;
+      try {
+        const arr = JSON.parse(legacy) || []; let moved = 0;
+        for (const r of arr) {
+          let id = r.id ?? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2));
+          const exists = await dbGetById(id);
+          if (exists) id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2));
+          const blob = r.fileBlob || (r.fileData ? dataURLtoBlob(r.fileData) : null);
+          await dbAddRecord({
+            id, patientName: (r.patientName || r.nome || '').trim(), appointmentDate: r.appointmentDate || r.data || '',
+            appointmentType: r.appointmentType || r.tipo || '', category: r.category || r.categoria || '',
+            fileName: r.fileName || r.arquivo || 'arquivo.pdf', fileBlob: blob, createdAt: r.createdAt || new Date().toISOString()
+          }); moved++;
+        }
+        localStorage.removeItem('medicalRecords');
+        showToast(`Migrados ${moved} prontuário(s) do localStorage ✅`, 'success');
+      } catch (e) { console.error(e); showToast('Falha ao migrar do localStorage.', 'error'); }
+    }
+
+    const addTab = document.getElementById('addTab'), consultTab = document.getElementById('consultTab');
+    const addSection = document.getElementById('addSection'), consultSection = document.getElementById('consultSection');
+    const recordForm = document.getElementById('recordForm'), modal = document.getElementById('modal');
+    const modalAddAnother = document.getElementById('modalAddAnother'), modalFinish = document.getElementById('modalFinish');
+    const fileDropZone = document.getElementById('fileDropZone'), pdfFile = document.getElementById('pdfFile');
+    const fileInfo = document.getElementById('fileInfo'), fileName = document.getElementById('fileName'), removeFile = document.getElementById('removeFile');
+    const searchInput = document.getElementById('searchInput');
+    const filterType = document.getElementById('filterType'), filterCategory = document.getElementById('filterCategory');
+    const btnClearFilters = document.getElementById('btnClearFilters'), btnSort = document.getElementById('btnSort'), sortLabel = document.getElementById('sortLabel');
+    const statsInfo = document.getElementById('statsInfo'), btnExport = document.getElementById('btnExport'), inputImport = document.getElementById('inputImport'), inputImportLegacy = document.getElementById('inputImportLegacy');
+    let sortDesc = true;
+
+    function todayISO() { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; }
+    function formatISOToBR(iso) { if (!iso || !iso.includes('-')) return iso || ''; const [y, m, d] = iso.split('-'); return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`; }
+    function normalizeStr(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+    function showToast(msg, type = 'success') { const c = document.getElementById('toastContainer'); const t = document.createElement('div'); t.className = 'flex items-center px-4 py-3 rounded-lg shadow-lg text-white transition-opacity opacity-0 ' + (type === 'success' ? 'bg-green-600' : 'bg-red-600'); t.innerHTML = '<i class="fas ' + (type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle') + ' mr-2"></i><span>' + msg + '</span>'; c.appendChild(t); requestAnimationFrame(() => t.classList.remove('opacity-0')); setTimeout(() => { t.classList.add('opacity-0'); setTimeout(() => t.remove(), 500); }, 3500); }
+
+    document.addEventListener('DOMContentLoaded', async () => { document.getElementById('appointmentDate').value = todayISO(); await migrateFromLocalStorage(); await displayRecords(); });
+
+    addTab.addEventListener('click', () => { addTab.classList.add('bg-indigo-600', 'text-white'); addTab.classList.remove('text-indigo-600', 'hover:bg-indigo-50'); consultTab.classList.remove('bg-indigo-600', 'text-white'); consultTab.classList.add('text-indigo-600', 'hover:bg-indigo-50'); addSection.classList.remove('hidden'); consultSection.classList.add('hidden'); });
+    consultTab.addEventListener('click', async () => { consultTab.classList.add('bg-indigo-600', 'text-white'); consultTab.classList.remove('text-indigo-600', 'hover:bg-indigo-50'); addTab.classList.remove('bg-indigo-600', 'text-white'); addTab.classList.add('text-indigo-600', 'hover:bg-indigo-50'); consultSection.classList.remove('hidden'); addSection.classList.add('hidden'); await displayRecords(); });
+
+    // Upload
+    fileDropZone.addEventListener('click', () => pdfFile.click());
+    fileDropZone.addEventListener('dragover', (e) => { e.preventDefault(); fileDropZone.classList.add('border-indigo-400', 'bg-indigo-50'); });
+    fileDropZone.addEventListener('dragleave', () => { fileDropZone.classList.remove('border-indigo-400', 'bg-indigo-50'); });
+    fileDropZone.addEventListener('drop', (e) => { e.preventDefault(); fileDropZone.classList.remove('border-indigo-400', 'bg-indigo-50'); const files = e.dataTransfer.files; if (files.length > 0) validateAndSetFile(files[0]); });
+    pdfFile.addEventListener('change', (e) => { if (e.target.files.length > 0) validateAndSetFile(e.target.files[0]); });
+    removeFile.addEventListener('click', () => { pdfFile.value = ''; hideFileInfo(); });
+    function validateAndSetFile(file) { const isPdf = (file.type === 'application/pdf') || file.name.toLowerCase().endsWith('.pdf'); if (!isPdf) { alert('Apenas PDF.'); return; } showFileInfo(file); if (!pdfFile.files || pdfFile.files.length === 0) { const dt = new DataTransfer(); dt.items.add(file); pdfFile.files = dt.files; } }
+    function showFileInfo(file) { fileName.textContent = `${file.name}`; fileDropZone.classList.add('hidden'); fileInfo.classList.remove('hidden'); }
+    function hideFileInfo() { fileDropZone.classList.remove('hidden'); fileInfo.classList.add('hidden'); }
+
+    // Submit
+    recordForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const file = pdfFile.files[0]; if (!file) { alert('Selecione um PDF.'); return; }
+      const patientName = document.getElementById('patientName').value.trim();
+      const appointmentDate = document.getElementById('appointmentDate').value;
+      const appointmentType = document.getElementById('appointmentType').value;
+      const category = document.getElementById('category').value;
+      if (!patientName || !appointmentDate || !appointmentType || !category) { alert('Preencha todos os campos.'); return; }
+      const id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2));
+      const record = { id, patientName, appointmentDate, appointmentType, category, fileName: file.name, fileBlob: file, createdAt: new Date().toISOString() };
+      try { await dbAddRecord(record); showModal(); } catch (err) { console.error(err); showToast('Erro ao salvar: ' + (err?.message || err), 'error'); }
+    });
+
+    function showModal() { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    function hideModal() { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+    function resetForm({ keepName = false } = {}) { const nameVal = document.getElementById('patientName').value; recordForm.reset(); document.getElementById('appointmentDate').value = todayISO(); hideFileInfo(); if (keepName) { document.getElementById('patientName').value = nameVal; document.getElementById('appointmentType').value = ''; document.getElementById('category').value = ''; } }
+    async function finalizeAndToast() { hideModal(); resetForm({ keepName: false }); showToast('Prontuário salvo com sucesso!', 'success'); if (!consultSection.classList.contains('hidden')) await displayRecords(); }
+    modalAddAnother.addEventListener('click', async () => { hideModal(); resetForm({ keepName: true }); document.getElementById('appointmentType').focus(); showToast('Prontuário salvo com sucesso!', 'success'); if (!consultSection.classList.contains('hidden')) await displayRecords(); });
+    modalFinish.addEventListener('click', finalizeAndToast);
+    modal.addEventListener('click', (e) => { if (e.target === modal) finalizeAndToast(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) finalizeAndToast(); });
+
+    // Filtros
+    [searchInput, filterType, filterCategory].forEach(el => {
+      el?.addEventListener('input', async () => displayRecords());
+      el?.addEventListener('change', async () => displayRecords());
+    });
+    btnClearFilters.addEventListener('click', async () => {
+      searchInput.value = ''; filterType.value = ''; filterCategory.value = ''; await displayRecords();
+    });
+    btnSort.addEventListener('click', async () => { sortDesc = !sortDesc; sortLabel.textContent = sortDesc ? 'Mais recentes' : 'Mais antigos'; await displayRecords(); });
+
+    async function displayRecords() {
+      const recordsList = document.getElementById('recordsList');
+      const noRecords = document.getElementById('noRecords');
+      const records = await dbGetAll();
+
+      const term = normalizeStr(searchInput?.value || '');
+      const fType = filterType.value;
+      const fCat = filterCategory.value;
+
+      const filtered = records.filter(r => {
+        const nameN = normalizeStr(r.patientName);
+        const typeN = normalizeStr(r.appointmentType);
+        const catN = normalizeStr(r.category);
+        const termOk = !term || nameN.includes(term) || typeN.includes(term) || catN.includes(term);
+        const typeOk = !fType || r.appointmentType === fType;
+        const catOk = !fCat || r.category === fCat;
+        return termOk && typeOk && catOk;
+      });
+
+      statsInfo.textContent = `${filtered.length} prontuário(s) (de ${records.length})`;
+
+      if (filtered.length === 0) {
+        if (noRecords) noRecords.classList.remove('hidden');
+        recordsList.querySelectorAll('.patient-block').forEach(n => n.remove());
+        return;
+      } else {
+        if (noRecords) noRecords.classList.add('hidden');
+      }
+
+      // Agrupa por paciente
+      const grouped = {};
+      for (const r of filtered) { (grouped[r.patientName] ??= []).push(r); }
+
+      // Prepara grupos: ordena internamente e calcula a data-chave do grupo
+      const groups = Object.entries(grouped).map(([name, arr]) => {
+        arr.sort((a, b) => sortDesc
+          ? (b.appointmentDate || '').localeCompare(a.appointmentDate || '')
+          : (a.appointmentDate || '').localeCompare(b.appointmentDate || '')
+        );
+        const keyDate = arr[0]?.appointmentDate || '';
+        return { name, arr, keyDate };
+      });
+
+      // Ordena os grupos pelo registro mais recente/antigo
+      groups.sort((g1, g2) => sortDesc
+        ? (g2.keyDate || '').localeCompare(g1.keyDate || '')
+        : (g1.keyDate || '').localeCompare(g2.keyDate || '')
+      );
+
+      // Render
+      recordsList.innerHTML = noRecords ? noRecords.outerHTML : '';
+      if (noRecords) recordsList.querySelector('#noRecords').classList.add('hidden');
+
+      let html = '';
+      for (const g of groups) {
+        html += `
+    <div class="patient-block mb-8 border border-gray-200 rounded-lg overflow-hidden">
+      <div class="bg-indigo-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <h3 class="text-lg font-semibold text-indigo-800"><i class="fas fa-user mr-2"></i>${g.name}</h3>
+          <p class="text-sm text-indigo-600">${g.arr.length} prontuário(s)</p>
+        </div>
+      </div>
+      <div class="divide-y divide-gray-200">`;
+
+        for (const r of g.arr) {
+          const formattedDate = formatISOToBR(r.appointmentDate);
+          const rid = String(r.id).replace(/"/g, '&quot;');
+          html += `
+        <div class="p-6 hover:bg-gray-50 transition-colors duration-200">
+          <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div class="flex-1">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                <div><span class="text-sm font-medium text-gray-500">Data:</span><p class="text-gray-900">${formattedDate}</p></div>
+                <div><span class="text-sm font-medium text-gray-500">Tipo:</span><p class="text-gray-900">${r.appointmentType}</p></div>
+                <div><span class="text-sm font-medium text-gray-500">Categoria:</span><p class="text-gray-900">${r.category}</p></div>
+              </div>
+              <div class="flex items-center text-sm text-gray-600"><i class="fas fa-file-pdf text-red-500 mr-2"></i><span>${r.fileName}</span></div>
+            </div>
+            <div class="md:ml-4 flex items-center gap-2">
+              <button class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors duration-200 flex items-center" data-action="download" data-id="${rid}"><i class="fas fa-download mr-2"></i>Download</button>
+              <button class="bg-amber-500 text-white px-4 py-2 rounded-lg hover:bg-amber-600 transition-colors duration-200 flex items-center" data-action="edit" data-id="${rid}"><i class="fa-solid fa-pen mr-2"></i>Editar</button>
+              <button class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors duration-200 flex items-center" data-action="delete" data-id="${rid}"><i class="fas fa-trash-alt mr-2"></i>Remover</button>
+            </div>
+          </div>
+        </div>`;
+        }
+
+        html += `</div></div>`;
+      }
+
+      recordsList.insertAdjacentHTML('beforeend', html);
+
+      // Liga os botões
+      recordsList.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const id = e.currentTarget.getAttribute('data-id');
+          const action = e.currentTarget.getAttribute('data-action');
+          if (action === 'download') return downloadPDF(id);
+          if (action === 'delete') return confirmDelete(id);
+          if (action === 'edit') return openEditModal(id);
+        });
+      });
+    }
+
+    async function downloadPDF(recordId) { const rec = await dbGetById(recordId); if (!rec || !rec.fileBlob) { showToast('Arquivo não encontrado.', 'error'); return; } const url = URL.createObjectURL(rec.fileBlob); const a = document.createElement('a'); a.href = url; a.download = rec.fileName || 'prontuario.pdf'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000); }
+    async function confirmDelete(id) { const rec = await dbGetById(id); if (!rec) { showToast('Registro não encontrado.', 'error'); return; } const ok = confirm(`Remover prontuário de "${rec.patientName}" (${rec.fileName})?`); if (!ok) return; try { const db = await openDB(); const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).delete(rec.id); showToast('Prontuário removido.'); await displayRecords(); } catch (err) { showToast('Erro ao remover: ' + (err?.message || err), 'error'); } }
+
+    const editModal = document.getElementById('editModal'), editForm = document.getElementById('editForm'), editCancel = document.getElementById('editCancel');
+    const editId = document.getElementById('editId'), editPatientName = document.getElementById('editPatientName'), editAppointmentDate = document.getElementById('editAppointmentDate'), editAppointmentType = document.getElementById('editAppointmentType'), editCategory = document.getElementById('editCategory'), editPdf = document.getElementById('editPdf');
+    function toggleEditModal(show) { if (show) { editModal.classList.remove('hidden'); editModal.classList.add('flex'); } else { editModal.classList.add('hidden'); editModal.classList.remove('flex'); } }
+    async function openEditModal(id) { const rec = await dbGetById(id); if (!rec) return showToast('Registro não encontrado.', 'error'); editId.value = rec.id; editPatientName.value = rec.patientName || ''; editAppointmentDate.value = rec.appointmentDate || todayISO(); editAppointmentType.value = rec.appointmentType || ''; editCategory.value = rec.category || ''; editPdf.value = ''; toggleEditModal(true); }
+    editCancel.addEventListener('click', () => toggleEditModal(false));
+    editForm.addEventListener('submit', async (e) => {
+      e.preventDefault(); const id = editId.value; const rec = await dbGetById(id); if (!rec) return showToast('Registro não encontrado.', 'error');
+      const newName = editPatientName.value.trim(), newDate = editAppointmentDate.value, newType = editAppointmentType.value, newCat = editCategory.value, newPdf = editPdf.files[0];
+      if (!newName || !newDate || !newType || !newCat) { alert('Preencha todos os campos.'); return; }
+      if (newPdf) { const isPdf = (newPdf.type === 'application/pdf') || newPdf.name.toLowerCase().endsWith('.pdf'); if (!isPdf) { alert('Apenas PDF.'); return; } rec.fileBlob = newPdf; rec.fileName = newPdf.name; }
+      rec.patientName = newName; rec.appointmentDate = newDate; rec.appointmentType = newType; rec.category = newCat;
+      try { await dbUpdateRecord(rec); toggleEditModal(false); showToast('Prontuário atualizado!'); await displayRecords(); } catch (err) { console.error(err); showToast('Erro ao atualizar: ' + (err?.message || err), 'error'); }
+    });
+
+    // Exportar/Importar ZIP
+    btnExport.addEventListener('click', async () => {
+      try {
+        const all = await dbGetAll(); if (!all.length) { showToast('Não há registros para exportar.', 'error'); return; }
+        const zip = new JSZip(); const meta = all.map(r => ({ id: r.id, patientName: r.patientName, appointmentDate: r.appointmentDate, appointmentType: r.appointmentType, category: r.category, fileName: r.fileName, createdAt: r.createdAt }));
+        zip.file('metadata.json', JSON.stringify({ exportedAt: new Date().toISOString(), count: all.length, items: meta }, null, 2));
+        for (const r of all) { if (r.fileBlob) { const ab = await r.fileBlob.arrayBuffer(); const safe = String(r.fileName || 'arquivo.pdf').replace(/[\\/:*?"<>|]/g, '_'); zip.file(`files/${r.id}__${safe}`, ab); } }
+        const content = await zip.generateAsync({ type: 'blob' }); const a = document.createElement('a'); a.href = URL.createObjectURL(content); a.download = `prontuarios_backup_${new Date().toISOString().slice(0, 10)}.zip`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); showToast('Backup exportado!');
+      } catch (e) { console.error(e); showToast('Falha ao exportar backup.', 'error'); }
+    });
+    inputImport.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0]; if (!file) return;
+      try {
+        const zip = await JSZip.loadAsync(file); const metaFile = zip.file('metadata.json'); if (!metaFile) throw new Error('metadata.json ausente');
+        const meta = JSON.parse(await metaFile.async('string')); const restored = [];
+        for (const item of (meta.items || [])) {
+          const fileEntry = zip.file(`files/${item.id}__${item.fileName.replace(/[\\/:*?"<>|]/g, '_')}`);
+          let blob = null; if (fileEntry) { const ab = await fileEntry.async('arraybuffer'); blob = new Blob([ab], { type: 'application/pdf' }); }
+          const exists = await dbGetById(item.id);
+          const rec = {
+            id: exists ? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2)) : item.id,
+            patientName: item.patientName, appointmentDate: item.appointmentDate, appointmentType: item.appointmentType, category: item.category, fileName: item.fileName, fileBlob: blob, createdAt: item.createdAt || new Date().toISOString()
+          };
+          await dbAddRecord(rec); restored.push(rec.id);
+        }
+        showToast(`Importados ${restored.length} registro(s)`); await displayRecords();
+      } catch (e2) { console.error(e2); showToast('Falha ao importar backup.', 'error'); } finally {
+        e.target.value = '';
+      }
+    });
+
+    // Importar legado (JSON)
+    inputImportLegacy.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0]; if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const items = Array.isArray(data) ? data : (data.items || data.records || []);
+        if (!Array.isArray(items) || items.length === 0) { throw new Error('JSON vazio ou formato desconhecido'); }
+        let count = 0;
+        for (const r of items) {
+          let id = r.id ?? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2));
+          const exists = await dbGetById(id);
+          if (exists) id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2));
+          const blob = r.fileBlob || (r.fileData ? dataURLtoBlob(r.fileData) : null);
+          await dbAddRecord({
+            id, patientName: (r.patientName || r.nome || '').trim(), appointmentDate: r.appointmentDate || r.data || '',
+            appointmentType: r.appointmentType || r.tipo || '', category: r.category || r.categoria || '',
+            fileName: r.fileName || r.arquivo || 'arquivo.pdf', fileBlob: blob, createdAt: r.createdAt || new Date().toISOString()
+          });
+          count++;
+        }
+        showToast(`Importados ${count} registro(s) do JSON antigo ✅`); await displayRecords();
+      } catch (err) { console.error(err); showToast('Falha ao importar JSON antigo.', 'error'); } finally {
+        e.target.value = '';
+      }
+    });
+  </script>
+</body>
+
+</html>
