@@ -1,6 +1,6 @@
 <img width="806" height="952" alt="image" src="https://github.com/user-attachments/assets/0bb673e5-24a7-4d74-b4b8-cd8135e84b37" />
 
-# Sistema de Gerenciamento de Prontuários HSP  
+# Sistema de Gerenciamento de Prontuários  
 *(HTML + Tailwind + IndexedDB, 100% client-side)*
 
 Este projeto é um **aplicativo estático** para cadastrar, consultar e gerenciar **prontuários em PDF** direto no navegador, com armazenamento local via **IndexedDB** (dados permanecem no dispositivo). Não há backend.
