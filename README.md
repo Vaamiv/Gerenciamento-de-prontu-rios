@@ -1,48 +1,37 @@
 # Sistema de Gerenciamento de Prontuários  
-*(HTML + Tailwind + IndexedDB, 100% client-side, com criptografia)*
+*(HTML + Tailwind + IndexedDB + Criptografia AES-GCM — 100% client-side)*
 
 Aplicativo **estático** para cadastrar, consultar e gerenciar **prontuários em PDF** direto no navegador.  
-Os dados ficam no **IndexedDB** do próprio dispositivo. **Não há backend.**
+Os dados ficam no dispositivo do usuário (**IndexedDB**) e os arquivos são criptografados localmente.
 
-> **Privacidade**: metadados e PDFs ficam **apenas no seu computador**.  
-> **Segurança em repouso**: PDFs são **criptografados** com AES-GCM; a chave vem de uma senha local via PBKDF2-SHA256.
+> **Privacidade**: PDFs e metadados **não saem do seu computador**. Nada é enviado para servidores.
 
 ---
 
 ## ✨ Funcionalidades
 
 - **Cadastro de prontuários** (nome, data, tipo, categoria + PDF)
-- **Consulta por paciente** com:
+- **Consulta** com:
   - Busca por nome/tipo/categoria
   - Filtros por **Tipo** e **Categoria**
-  - Ordenação **Mais recentes / Mais antigos**
-- **Download, edição e remoção** de registros
-- **Exportar** backup (`.zip`) e **Importar** backup (`.zip`)
-  - Exporta **sempre criptografado**
-  - Importa **legado** (sem criptografia) e recriptografa automaticamente
-- **Tela de Acesso** (criar senha / entrar) e **Bloquear** sessão
-- **Trocar senha** com **recriptografia** automática de todos os PDFs
-- **Migração automática** de bases antigas salvas em `localStorage`
-- **Sem limite fixo de tamanho** de PDF (sujeito aos limites do navegador)
-- UI responsiva com Tailwind CSS
+  - Ordenação cíclica: **Mais recentes → Mais antigos → A–Z → Z–A**
+- **Ações por registro**:
+  - **Visualizar** PDF em nova aba (descriptografado na memória)
+  - **Download** do PDF
+  - **Editar** metadados e substituir arquivo
+  - **Remover** (vai para **Lixeira**) com opção **Desfazer**
+- **Backup**:
+  - **Exportar** `.zip` (com `metadata.json` e arquivos criptografados)
+  - **Importar** `.zip` (aceita backups legados sem criptografia e os recriptografa)
+  - **Pasta de backup** (opcional, via File System Access API — Chromium)
+- **Segurança**:
+  - Tela de **bloqueio/autenticação**
+  - **Auto-bloqueio** após 10 min de inatividade
+  - **Alterar senha** (recriptografa todos os PDFs com a nova senha)
 
 ---
 
-## 🔐 Modelo de segurança
-
-- **Criptografia**: AES-GCM com IV de 12 bytes único por arquivo  
-- **Derivação de chave**: PBKDF2-SHA256 com **150.000 iterações**  
-- **Credenciais salvas localmente**:
-  - `auth.salt` (base64)
-  - `auth.verifier` = SHA-256 da chave derivada (não é a senha)
-- **Sessão**: botão **Bloquear** e **auto-bloqueio** após 10 min sem interação  
-- **Backups**: `.zip` com `metadata.json` + `files/*.bin` (ciphertext)
-
-> **Fora de escopo**: extensões maliciosas, máquina comprometida ou alguém usando DevTools **enquanto a sessão estiver desbloqueada**. O objetivo é proteger **em repouso** e exigir senha para operações sensíveis.
-
----
-
-## 🗂 Estrutura
+## 🗂 Estrutura do projeto
 
 Único arquivo:
 
@@ -50,69 +39,107 @@ Os dados ficam no **IndexedDB** do próprio dispositivo. **Não há backend.**
 index.html
 ```
 
-CDNs:
+CDNs utilizadas:
 - Tailwind CSS
 - Font Awesome (ícones)
 - JSZip (backup)
 
-> Para funcionar 100% offline “desde a 1ª abertura”, baixe os arquivos das CDNs e troque os `<script>/<link>` por referências locais.
+> Para funcionar **100% offline desde a primeira execução**, baixe as dependências das CDNs e referencie os arquivos locais.
 
 ---
 
 ## 🚀 Como usar (local)
 
-1. Abra o `index.html` no navegador (Chrome/Edge/Firefox/Safari).  
-2. Na primeira execução, **crie uma senha**.  
-3. Use as abas:
-   - **Adicionar Prontuário**: preencha os campos e anexe o PDF.
-   - **Consultar Pacientes**: pesquise, filtre, baixe, edite ou remova.
-4. Botões do topo:
-   - **Exportar**: gera `.zip` **criptografado**.
-   - **Importar**: restaura backups; também aceita **legado** (sem crypto).
-   - **Bloquear**: encerra a sessão atual.
-
-> A primeira abertura pode precisar de internet por causa das CDNs.
+1. Baixe/salve o `index.html`.
+2. Abra no navegador (Chrome/Edge/Firefox/Safari).
+3. Na **primeira execução**, crie a **senha** (somente neste navegador).
+4. Use as abas:
+   - **Adicionar Prontuário**: preencha campos e anexe o PDF.
+   - **Consultar Pacientes**: pesquise, filtre, visualize, baixe, edite ou remova.
+5. **Bloquear** quando quiser (botão **Bloquear**) ou aguarde auto-bloqueio (10 min).
 
 ---
 
-## 🔑 Trocar senha (com recriptografia)
+## 🔐 Criptografia & Autenticação
 
-1. Clique em **Mudar senha**.  
-2. Informe **senha atual** e **nova senha** (mín. 6 chars).  
-3. O app valida a senha e **recriptografa todos os PDFs** com a nova chave (pode levar alguns segundos se houver muitos arquivos).  
+- Cada PDF é criptografado com **AES-GCM** e **IV aleatório**.
+- A chave é derivada da senha via **PBKDF2-SHA256** (`150.000` iterações).
+- No `localStorage` ficam apenas:
+  - `auth.salt` — *salt* em Base64
+  - `auth.verifier` — `SHA-256` da chave derivada (para verificar a senha)
+- Os blobs criptografados são armazenados na **IndexedDB**.
 
-> **Esqueceu a senha?** Limpe o navegador e **reimporte um backup**. Você precisará da senha válida na época do backup.
+### Alterar senha
+1. Clique em **Alterar senha**.
+2. Informe **senha atual**, **nova senha** e **confirmação**.
+3. O app descriptografa cada arquivo com a chave antiga e **recriptografa** com a nova.
+4. Atualiza `auth.salt` e `auth.verifier` e passa a usar a nova chave.
+
+> **Importante:** se esquecer a senha, **não há recuperação**. Limpe o navegador e **importe** um backup válido.
 
 ---
 
 ## 💾 Armazenamento & Backup
 
-### Onde os dados ficam?
-- **IndexedDB** (DB: `medicalDB`, store: `records`)
-
-Campos por registro (principais):
-- `id`, `patientName`, `appointmentDate`, `appointmentType`, `category`
-- `fileName`, `fileMime`
-- `fileIv` (base64) → **presença indica que o arquivo está criptografado**
-- `fileBlob` (Blob) → **ciphertext**
-- `createdAt`
-
-### Exportar
-Gera `.zip` com:
+### IndexedDB
+- Banco: `medicalDB`
+- Stores:
+  - `records` (prontuários)
+  - `settings` (ex.: handle da **pasta de backup** quando suportado)
+- Exemplo de registro (`records`):
+```json
+{
+  "id": "uuid",
+  "patientName": "Fulano",
+  "appointmentDate": "2025-01-31",
+  "appointmentType": "FAA",
+  "category": "SUS",
+  "fileName": "arquivo.pdf",
+  "fileMime": "application/pdf",
+  "fileIv": "Base64(IV)",             // ausente em backups legados sem criptografia
+  "fileBlob": "[Blob criptografado]",
+  "createdAt": "2025-01-31T12:34:56.000Z",
+  "deletedAt": null                   // preenchido quando vai para a Lixeira
+}
 ```
-metadata.json  // inclui encrypted: true, itens e metadados
-files/<id>__<nome_arquivo>.bin  // conteúdo criptografado (AES-GCM)
+
+### Exportar backup
+Gera um `.zip` com:
+```
+metadata.json
+files/<id>__<nome_sanitizado>.bin   # blobs criptografados
+```
+`metadata.json` (exemplo):
+```json
+{
+  "encrypted": true,
+  "exportedAt": "2025-01-31T12:34:56.000Z",
+  "count": 2,
+  "items": [
+    {
+      "id": "uuid",
+      "patientName": "Fulano",
+      "appointmentDate": "2025-01-31",
+      "appointmentType": "FAA",
+      "category": "SUS",
+      "fileName": "arquivo.pdf",
+      "fileMime": "application/pdf",
+      "fileIv": "Base64(IV)",
+      "createdAt": "2025-01-31T12:00:00.000Z",
+      "deletedAt": null
+    }
+  ]
+}
 ```
 
-### Importar
-- **Novo formato** (criptografado): restaura direto.  
-- **Legado** (PDF limpo): ao importar, **criptografa** com a sua chave atual.  
-- IDs duplicados geram **novos IDs** automaticamente.
+### Importar backup
+- Seleciona `.zip` exportado pelo sistema.
+- Se encontrar arquivos **legados sem criptografia**, eles são **criptografados** na importação (exige senha desbloqueada).
+- Conflito de IDs gera **novo ID** automaticamente.
 
-### Migração automática (localStorage → IndexedDB)
-Na primeira carga, migra dados das chaves antigas:
-- `medicalRecords`, `records` ou `prontuarios`
-- Converte para IndexedDB (incluindo PDFs salvos como DataURL, se houver).
+### Pasta de backup (opcional)
+- Em navegadores Chromium (Chrome/Edge) é possível escolher uma **pasta** para gravar o `.zip` automaticamente.
+- A permissão do diretório é requisitada pelo navegador; pode ser revogada a qualquer momento.
 
 ---
 
@@ -123,32 +150,34 @@ Na primeira carga, migra dados das chaves antigas:
 2. **Data do atendimento**
 3. **Tipo**: `FAA`, `Internação`, `Oftalmologia`
 4. **Categoria**: `SUS`, `Particular HSP`, `IPE`, `PM Lagoa`, `Unimed`, `Outros`
-5. **PDF** (somente valida extensão/tipo)
-6. **Registrar Prontuário** (modal oferece adicionar outro do mesmo paciente)
+5. **PDF**
+6. **Registrar Prontuário** → modal para adicionar outro do mesmo paciente
 
 ### Consultar
-- **Busca livre** (nome/tipo/categoria)
+- **Busca** livre (nome/tipo/categoria)
 - **Filtros**: Tipo e Categoria
-- **Ordenação**: “**Mais recentes** / **Mais antigos**”
-- **Ações**: Download / Editar / Remover
+- **Ordenação**: **Mais recentes → Mais antigos → A–Z → Z–A**
+- **Ações**: **Visualizar** / **Download** / **Editar** / **Remover** (Lixeira + **Desfazer**)
 
 ---
 
 ## 🧪 Navegadores suportados
 
-- Chrome (recomendado), Edge, Firefox, Safari (recentes)
-- Requer **IndexedDB**, **Blob/File APIs** e **Web Crypto API** (PBKDF2, AES-GCM, SHA-256).
+- **Chrome/Edge** (recomendados), **Firefox**, **Safari** (versões recentes).
+- Requisitos: **IndexedDB**, **File/Blob APIs**, **Web Crypto (AES-GCM, PBKDF2)**.
+- **Pasta de backup** requer **File System Access API** (Chromium).
 
 ---
 
-## 🔐 Privacidade & LGPD
+## ⚠️ Observações de segurança
 
-- Dados ficam **somente no dispositivo** do usuário.
-- Cuidado em **máquinas compartilhadas** (use **Bloquear**).
-- Faça **backups** regulares e armazene-os em local seguro.
+- O app é **local** e não substitui exigências regulatórias (ex.: LGPD/HIPAA/segurança corporativa).
+- Proteja o **dispositivo** (usuário do SO, disco criptografado, tela com senha).
+- Em **navegação anônima** os dados podem ser perdidos ao fechar a janela.
+- **Esqueceu a senha?** Limpe o navegador e **importe** um backup. A equipe não consegue recuperar.
 
 ---
 
 ## 🧾 Licença
 
-Uso livre para fins internos.
+Uso livre para fins internos. Se preferir, aplique **MIT**.
