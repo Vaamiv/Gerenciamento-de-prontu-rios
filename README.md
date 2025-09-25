@@ -1,11 +1,11 @@
-<img width="806" height="952" alt="image" src="https://github.com/user-attachments/assets/0bb673e5-24a7-4d74-b4b8-cd8135e84b37" />
-
 # Sistema de Gerenciamento de Prontuários  
-*(HTML + Tailwind + IndexedDB, 100% client-side)*
+*(HTML + Tailwind + IndexedDB, 100% client-side, com criptografia)*
 
-Este projeto é um **aplicativo estático** para cadastrar, consultar e gerenciar **prontuários em PDF** direto no navegador, com armazenamento local via **IndexedDB** (dados permanecem no dispositivo). Não há backend.
+Aplicativo **estático** para cadastrar, consultar e gerenciar **prontuários em PDF** direto no navegador.  
+Os dados ficam no **IndexedDB** do próprio dispositivo. **Não há backend.**
 
-> **Privacidade**: os PDFs e metadados ficam **apenas no seu computador**/navegador. Nada é enviado para servidores.
+> **Privacidade**: metadados e PDFs ficam **apenas no seu computador**.  
+> **Segurança em repouso**: PDFs são **criptografados** com AES-GCM; a chave vem de uma senha local via PBKDF2-SHA256.
 
 ---
 
@@ -13,64 +13,104 @@ Este projeto é um **aplicativo estático** para cadastrar, consultar e gerencia
 
 - **Cadastro de prontuários** (nome, data, tipo, categoria + PDF)
 - **Consulta por paciente** com:
-  - Busca por nome/tipo/categoria  
+  - Busca por nome/tipo/categoria
   - Filtros por **Tipo** e **Categoria**
   - Ordenação **Mais recentes / Mais antigos**
 - **Download, edição e remoção** de registros
-- **Exportar backup** (`.zip`) e **Importar backup** (`.zip`)
+- **Exportar** backup (`.zip`) e **Importar** backup (`.zip`)
+  - Exporta **sempre criptografado**
+  - Importa **legado** (sem criptografia) e recriptografa automaticamente
+- **Tela de Acesso** (criar senha / entrar) e **Bloquear** sessão
+- **Trocar senha** com **recriptografia** automática de todos os PDFs
 - **Migração automática** de bases antigas salvas em `localStorage`
-- Validação de **PDF** (sem limite fixo de tamanho — sujeito ao limite do navegador)
+- **Sem limite fixo de tamanho** de PDF (sujeito aos limites do navegador)
 - UI responsiva com Tailwind CSS
+
+---
+
+## 🔐 Modelo de segurança
+
+- **Criptografia**: AES-GCM com IV de 12 bytes único por arquivo  
+- **Derivação de chave**: PBKDF2-SHA256 com **150.000 iterações**  
+- **Credenciais salvas localmente**:
+  - `auth.salt` (base64)
+  - `auth.verifier` = SHA-256 da chave derivada (não é a senha)
+- **Sessão**: botão **Bloquear** e **auto-bloqueio** após 10 min sem interação  
+- **Backups**: `.zip` com `metadata.json` + `files/*.bin` (ciphertext)
+
+> **Fora de escopo**: extensões maliciosas, máquina comprometida ou alguém usando DevTools **enquanto a sessão estiver desbloqueada**. O objetivo é proteger **em repouso** e exigir senha para operações sensíveis.
 
 ---
 
 ## 🗂 Estrutura
 
-É um único arquivo:
+Único arquivo:
 
 ```
 index.html
 ```
 
-Bibliotecas via CDN:
+CDNs:
 - Tailwind CSS
 - Font Awesome (ícones)
-- JSZip (exportação/importação de backup)
+- JSZip (backup)
 
-> Se desejar funcionamento **100% offline** (inclusive sem internet na primeira abertura), baixe os arquivos das CDNs e troque as referências por arquivos locais.
+> Para funcionar 100% offline “desde a 1ª abertura”, baixe os arquivos das CDNs e troque os `<script>/<link>` por referências locais.
 
 ---
 
 ## 🚀 Como usar (local)
 
-1. Baixe/salve o `index.html`.
-2. Dê **duplo clique** para abrir no navegador (Chrome/Edge/Firefox).
+1. Abra o `index.html` no navegador (Chrome/Edge/Firefox/Safari).  
+2. Na primeira execução, **crie uma senha**.  
 3. Use as abas:
    - **Adicionar Prontuário**: preencha os campos e anexe o PDF.
    - **Consultar Pacientes**: pesquise, filtre, baixe, edite ou remova.
+4. Botões do topo:
+   - **Exportar**: gera `.zip` **criptografado**.
+   - **Importar**: restaura backups; também aceita **legado** (sem crypto).
+   - **Bloquear**: encerra a sessão atual.
 
-> A primeira abertura precisa de internet por causa das CDNs. Depois, os dados ficam salvos no navegador via IndexedDB.
+> A primeira abertura pode precisar de internet por causa das CDNs.
+
+---
+
+## 🔑 Trocar senha (com recriptografia)
+
+1. Clique em **Mudar senha**.  
+2. Informe **senha atual** e **nova senha** (mín. 6 chars).  
+3. O app valida a senha e **recriptografa todos os PDFs** com a nova chave (pode levar alguns segundos se houver muitos arquivos).  
+
+> **Esqueceu a senha?** Limpe o navegador e **reimporte um backup**. Você precisará da senha válida na época do backup.
 
 ---
 
 ## 💾 Armazenamento & Backup
 
 ### Onde os dados ficam?
-- **IndexedDB** do navegador (DB: `medicalDB`, store: `records`).
+- **IndexedDB** (DB: `medicalDB`, store: `records`)
 
-### Exportar Backup
-- Clique em **Exportar** → baixa um `.zip` com:
-  ```
-  metadata.json
-  files/<id>__<nome_arquivo.pdf>
-  ```
+Campos por registro (principais):
+- `id`, `patientName`, `appointmentDate`, `appointmentType`, `category`
+- `fileName`, `fileMime`
+- `fileIv` (base64) → **presença indica que o arquivo está criptografado**
+- `fileBlob` (Blob) → **ciphertext**
+- `createdAt`
 
-### Importar Backup
-- Clique em **Importar** e selecione um `.zip` exportado por este sistema.  
-- IDs duplicados são resolvidos gerando novos IDs quando necessário.
+### Exportar
+Gera `.zip` com:
+```
+metadata.json  // inclui encrypted: true, itens e metadados
+files/<id>__<nome_arquivo>.bin  // conteúdo criptografado (AES-GCM)
+```
+
+### Importar
+- **Novo formato** (criptografado): restaura direto.  
+- **Legado** (PDF limpo): ao importar, **criptografa** com a sua chave atual.  
+- IDs duplicados geram **novos IDs** automaticamente.
 
 ### Migração automática (localStorage → IndexedDB)
-Na primeira carga, o app procura por chaves antigas:
+Na primeira carga, migra dados das chaves antigas:
 - `medicalRecords`, `records` ou `prontuarios`
 - Converte para IndexedDB (incluindo PDFs salvos como DataURL, se houver).
 
@@ -79,46 +119,36 @@ Na primeira carga, o app procura por chaves antigas:
 ## 🧭 Fluxos principais
 
 ### Cadastrar
-1. **Nome do paciente**  
-2. **Data do atendimento**  
-3. **Tipo**: `FAA`, `Internação`, `Oftalmologia`  
-4. **Categoria**: `SUS`, `Particular HSP`, `IPE`, `PM Lagoa`, `Unimed`, `Outros`  
-5. **PDF** (apenas valida a extensão/tipo)  
-6. **Registrar Prontuário** → modal para adicionar outro do mesmo paciente
+1. **Nome do paciente**
+2. **Data do atendimento**
+3. **Tipo**: `FAA`, `Internação`, `Oftalmologia`
+4. **Categoria**: `SUS`, `Particular HSP`, `IPE`, `PM Lagoa`, `Unimed`, `Outros`
+5. **PDF** (somente valida extensão/tipo)
+6. **Registrar Prontuário** (modal oferece adicionar outro do mesmo paciente)
 
 ### Consultar
 - **Busca livre** (nome/tipo/categoria)
 - **Filtros**: Tipo e Categoria
-- **Ordenação**: botão “**Mais recentes** / **Mais antigos**”
-- **Ações por registro**: Download / Editar / Remover
+- **Ordenação**: “**Mais recentes** / **Mais antigos**”
+- **Ações**: Download / Editar / Remover
 
 ---
 
 ## 🧪 Navegadores suportados
 
-- Chrome (recomendado), Edge, Firefox, Safari (versões recentes)
-- É necessário suporte a **IndexedDB** e **Blob**/File APIs.
+- Chrome (recomendado), Edge, Firefox, Safari (recentes)
+- Requer **IndexedDB**, **Blob/File APIs** e **Web Crypto API** (PBKDF2, AES-GCM, SHA-256).
 
 ---
 
 ## 🔐 Privacidade & LGPD
 
-- Os arquivos e metadados ficam **somente no dispositivo** do usuário.  
-- Tenha atenção ao uso em máquinas compartilhadas.
-- Faça **backups** regulares e armazene-os com segurança.
-
----
-
-## 🛜 Publicação
-
-Como é só um `index.html`, você pode hospedar em:
-- GitHub Pages / Netlify / Vercel / servidor estático qualquer.
-- **Dica**: inclua os arquivos das CDNs localmente para funcionar offline “do zero”.
+- Dados ficam **somente no dispositivo** do usuário.
+- Cuidado em **máquinas compartilhadas** (use **Bloquear**).
+- Faça **backups** regulares e armazene-os em local seguro.
 
 ---
 
 ## 🧾 Licença
 
-Uso livre para fins internos. Se desejar, você pode aplicar **MIT**.
-
----
+Uso livre para fins internos.
