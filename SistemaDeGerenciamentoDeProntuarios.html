@@ -20,7 +20,7 @@
 
     <!-- Ações topo -->
     <div class="flex justify-center gap-2 mb-8">
-      <button id="btnExport" class="bg-emerald-600 text-white px-4 py-2 rounded-lg shadow hover:bg-emerald-700 transition flex items-center gap-2" title="Exportar backup (.zip)">
+      <button id="btnExport" class="bg-emerald-600 text-white px-4 py-2 rounded-lg shadow hover:bg-emerald-700 transition flex items-center gap-2" title="Exportar backup (.zip) em partes (recomendado para backups grandes)">
         <i class="fa-solid fa-file-export"></i><span class="hidden sm:inline">Exportar</span>
       </button>
 
@@ -29,10 +29,6 @@
         <input id="inputImport" type="file" accept=".zip" class="hidden"/>
       </label>
 
-      <button id="btnBackupDir" class="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50" title="Configurar pasta de backup">
-        <i class="fa-solid fa-folder-open mr-2"></i>Pasta de backup
-      </button>
-
       <!-- NOVO: alterar senha -->
       <button id="btnChangePw" class="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50" title="Alterar senha">
         <i class="fa-solid fa-key mr-2"></i>Alterar senha
@@ -40,9 +36,9 @@
 
       <button id="btnLock" class="px-4 py-2 rounded-lg border bg-white hover:bg-gray-50" title="Bloquear">
         <i class="fa-solid fa-lock mr-2"></i>Bloquear
-      </button>
-    </div>
+      </button></div>
 
+    <div id="dbStats" class="text-center text-sm text-gray-600 mb-6"></div>
     <!-- Tabs -->
     <div class="flex justify-center mb-8">
       <div class="bg-white rounded-lg shadow-md p-1">
@@ -82,6 +78,7 @@
               <option>FAA</option>
               <option>Internação</option>
               <option>Oftalmologia</option>
+              <option>Endocrinologia</option>
             </select>
           </div>
           <div>
@@ -848,8 +845,10 @@
           if (action === 'edit')     return openEditModal(id);
         });
       });
+      await updateDbStats(records);
     }
 
+    
     /* ====================== PREVIEW / DOWNLOAD / DELETE / EDIT ===================== */
     async function previewPDF(recordId) {
       const rec = await dbGetById(recordId);
@@ -964,15 +963,51 @@
       catch (err) { console.error(err); showToast('Erro ao atualizar: ' + (err?.message || err), 'error'); }
     });
 
-    /* ====================== EXPORTAR/IMPORTAR ZIP + PASTA DE BACKUP ===================== */
-    async function pickBackupDir() {
-      if (!window.showDirectoryPicker) { alert('Navegador sem suporte a pasta de backup.'); return; }
+    /* ====================== EXPORTAR/IMPORTAR ZIP (EM PARTES) + BACKUP EM PASTA ===================== */
+
+    // Mostra estatísticas do banco (útil para entender se você está no file:// ou no localhost)
+    async function updateDbStats(preloadedRecords = null) {
       try {
-        backupDirHandle = await showDirectoryPicker();
+        const el = document.getElementById('dbStats');
+        if (!el) return;
+
+        const records = preloadedRecords || await dbGetAll();
+        const total = records.length;
+        const active = records.filter(r => !r.deletedAt).length;
+
+        let files = 0;
+        let bytes = 0;
+        for (const r of records) {
+          if (!r.deletedAt && r.fileBlob) {
+            files++;
+            bytes += (r.fileBlob.size || 0);
+          }
+        }
+        const mb = bytes / 1024 / 1024;
+        el.textContent = `${active} prontuário(s) ativo(s) (${total} no total) • ${files} anexo(s) • ${mb.toFixed(2)} MB`;
+      } catch (e) { console.error(e); }
+    }
+
+    function safeName(name) {
+      return String(name || 'arquivo').replace(/[\/:*?"<>|]/g, '_');
+    }
+
+    function canUseFolderPicker() {
+      return !!window.showDirectoryPicker && !!window.isSecureContext && location.protocol !== 'file:';
+    }
+
+    async function pickBackupDir() {
+      if (!canUseFolderPicker()) {
+        showToast('Configurar pasta só funciona em http://localhost (ou https).', 'error');
+        return;
+      }
+      try {
+        backupDirHandle = await showDirectoryPicker({ mode: 'readwrite' });
         await settingsSet('backupDirHandle', backupDirHandle);
         showToast('Pasta de backup configurada.');
       } catch (e) { console.error(e); showToast('Não foi possível configurar a pasta.', 'error'); }
     }
+
     async function exportToDir(blob, fileName) {
       if (!backupDirHandle) return false;
       try {
@@ -983,36 +1018,281 @@
         return true;
       } catch (e) { console.error(e); return false; }
     }
+
     btnBackupDir?.addEventListener('click', pickBackupDir);
 
-    btnExport.addEventListener('click', async () => {
-      try {
-        const all = await dbGetAll(); if (!all.length) return showToast('Não há registros para exportar.', 'error');
-        const zip = new JSZip();
-        const meta = all.map(r => ({
-          id: r.id, patientName: r.patientName, appointmentDate: r.appointmentDate,
-          appointmentType: r.appointmentType, category: r.category, fileName: r.fileName,
-          fileMime: r.fileMime || 'application/pdf', fileIv: r.fileIv || null, createdAt: r.createdAt, deletedAt: r.deletedAt || null
-        }));
-        zip.file('metadata.json', JSON.stringify({ encrypted: true, exportedAt: new Date().toISOString(), count: all.length, items: meta }, null, 2));
-        for (const r of all) {
-          if (r.fileBlob) {
-            const ab = await r.fileBlob.arrayBuffer();
-            const safe = String(r.fileName || 'arquivo.bin').replace(/[\\/:*?"<>|]/g, '_');
-            zip.file(`files/${r.id}__${safe}.bin`, ab);
-          }
-        }
-        const content = await zip.generateAsync({ type: 'blob' });
-        const fileName = `prontuarios_backup_${new Date().toISOString().slice(0, 10)}.zip`;
+    // EXPORTAR ZIP EM PARTES (funciona no file:// e no localhost).
+    // Dica: Para backups gigantes (GBs), exportar em partes evita estouro de memória.
+    async function exportZipInParts(partLimitMB = 250) {
+      if (typeof JSZip === 'undefined') {
+        showToast('JSZip não carregou. Verifique sua internet ou use JSZip local.', 'error');
+        return;
+      }
+
+      const all = await dbGetAll();
+      if (!all.length) return showToast('Não há registros para exportar.', 'error');
+
+      const LIMIT = Math.max(50, Number(partLimitMB) || 250) * 1024 * 1024;
+
+      let part = 1;
+      let zip = new JSZip();
+      let metaItems = [];
+      let bytes = 0;
+
+      async function finalizePart() {
+        const metaObj = {
+          encrypted: true,
+          format: 'zip-parts-v1',
+          exportedAt: new Date().toISOString(),
+          part,
+          count: metaItems.length,
+          items: metaItems
+        };
+
+        zip.file('metadata.json', JSON.stringify(metaObj, null, 2));
+
+        const content = await zip.generateAsync({
+          type: 'blob',
+          streamFiles: true,
+          compression: 'DEFLATE',
+          compressionOptions: { level: 6 }
+        });
+
+        const fileName = `prontuarios_backup_${new Date().toISOString().slice(0, 10)}_part${String(part).padStart(2, '0')}.zip`;
+
+        // Se existir pasta configurada (no localhost), salva lá; senão, baixa no navegador
         if (backupDirHandle) {
           const saved = await exportToDir(content, fileName);
-          if (saved) { showToast('Backup exportado na pasta configurada.'); return; }
+          if (saved) return;
         }
-        const a = document.createElement('a'); a.href = URL.createObjectURL(content); a.download = fileName;
-        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-        showToast('Backup exportado!');
-      } catch (e) { console.error(e); showToast('Falha ao exportar backup.', 'error'); }
+
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(content);
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      }
+
+      function resetPart() {
+        zip = new JSZip();
+        metaItems = [];
+        bytes = 0;
+      }
+
+      showToast('Exportando backup em partes... (pode pedir permissão de múltiplos downloads)');
+
+      for (const r of all) {
+        const fileSize = r.fileBlob?.size || 0;
+
+        // se passar do limite e já tiver algo, fecha a parte atual
+        if (metaItems.length > 0 && (bytes + fileSize) > LIMIT) {
+          await finalizePart();
+          part++;
+          resetPart();
+        }
+
+        metaItems.push({
+          id: r.id,
+          patientName: r.patientName,
+          appointmentDate: r.appointmentDate,
+          appointmentType: r.appointmentType,
+          category: r.category,
+          fileName: r.fileName,
+          fileMime: r.fileMime || 'application/pdf',
+          fileIv: r.fileIv || null,
+          createdAt: r.createdAt,
+          deletedAt: r.deletedAt || null
+        });
+
+        if (r.fileBlob) {
+          const safe = safeName(r.fileName || 'arquivo');
+          // IMPORTANTÍSSIMO: passar Blob direto (evita arrayBuffer gigante)
+          zip.file(`files/${r.id}__${safe}.bin`, r.fileBlob, { binary: true });
+          bytes += fileSize;
+        }
+      }
+
+      if (metaItems.length > 0) {
+        await finalizePart();
+      }
+
+      showToast('Backup exportado em partes!');
+    }
+
+    // Clique no "Exportar" -> exporta em partes.
+    // Se quiser, altere o tamanho por parte aqui:
+    const DEFAULT_PART_LIMIT_MB = 250;
+    btnExport.addEventListener('click', async () => {
+      try { await exportZipInParts(DEFAULT_PART_LIMIT_MB); }
+      catch (e) { console.error(e); showToast('Falha ao exportar backup.', 'error'); }
     });
+
+    // EXPORTAR/IMPORTAR DIRETO EM PASTA (sem ZIP) — recomendado para backups muito grandes.
+    async function exportBackupToFolder() {
+      if (!canUseFolderPicker()) {
+        showToast('Exportar pasta só funciona em http://localhost (ou https).', 'error');
+        return;
+      }
+
+      const all = await dbGetAll();
+      if (!all.length) return showToast('Não há registros para exportar.', 'error');
+
+      // seleciona uma pasta "pai" e cria uma pasta de backup dentro (para não sobrescrever)
+      const parent = await showDirectoryPicker({ mode: 'readwrite' });
+
+      const stamp = new Date().toISOString().replace(/[:]/g, '-').replace(/\..+$/, '');
+      const backupFolderName = `prontuarios_backup_${stamp}`;
+      const backupDir = await parent.getDirectoryHandle(backupFolderName, { create: true });
+      const filesDir = await backupDir.getDirectoryHandle('files', { create: true });
+
+      const meta = all.map(r => ({
+        id: r.id,
+        patientName: r.patientName,
+        appointmentDate: r.appointmentDate,
+        appointmentType: r.appointmentType,
+        category: r.category,
+        fileName: r.fileName,
+        fileMime: r.fileMime || 'application/pdf',
+        fileIv: r.fileIv || null,
+        createdAt: r.createdAt,
+        deletedAt: r.deletedAt || null
+      }));
+
+      const metaObj = {
+        encrypted: true,
+        format: 'folder-raw-v1',
+        exportedAt: new Date().toISOString(),
+        count: all.length,
+        items: meta
+      };
+
+      // metadata.json
+      const metaHandle = await backupDir.getFileHandle('metadata.json', { create: true });
+      {
+        const w = await metaHandle.createWritable();
+        await w.write(new Blob([JSON.stringify(metaObj, null, 2)], { type: 'application/json' }));
+        await w.close();
+      }
+
+      // arquivos (Blob direto)
+      let written = 0;
+      for (const r of all) {
+        if (!r.fileBlob) continue;
+
+        const safe = safeName(r.fileName || 'arquivo');
+        const base = `${r.id}__${safe}.bin`;
+
+        const fh = await filesDir.getFileHandle(base, { create: true });
+        const w = await fh.createWritable();
+        await w.write(r.fileBlob);
+        await w.close();
+
+        written++;
+        if (written % 25 === 0) showToast(`Exportando... (${written} arquivo(s))`);
+      }
+
+      showToast(`Backup exportado na pasta "${backupFolderName}" (${written} arquivo(s))`);
+    }
+
+    async function importBackupFromFolder() {
+      if (!canUseFolderPicker()) {
+        showToast('Importar pasta só funciona em http://localhost (ou https).', 'error');
+        return;
+      }
+
+      // selecione a pasta de backup (a que contém metadata.json e /files)
+      const backupDir = await showDirectoryPicker({ mode: 'readwrite' });
+
+      let meta;
+      try {
+        const metaHandle = await backupDir.getFileHandle('metadata.json');
+        const metaFile = await metaHandle.getFile();
+        meta = JSON.parse(await metaFile.text());
+      } catch (e) {
+        console.error(e);
+        showToast('metadata.json não encontrado ou inválido.', 'error');
+        return;
+      }
+
+      const items = meta.items || [];
+      if (!items.length) { showToast('Backup sem itens em metadata.json.', 'error'); return; }
+
+      let filesDir;
+      try {
+        filesDir = await backupDir.getDirectoryHandle('files');
+      } catch (e) {
+        console.error(e);
+        showToast('Pasta "files" não encontrada.', 'error');
+        return;
+      }
+
+      const encrypted = !!meta.encrypted;
+      let restored = 0;
+
+      for (const item of items) {
+        const safe = safeName(item.fileName || 'arquivo');
+        const base = `${item.id}__${safe}.bin`;
+
+        let blob = null;
+        let ivB64 = item.fileIv || null;
+
+        try {
+          const fh = await filesDir.getFileHandle(base);
+          const f = await fh.getFile(); // File é um Blob
+          if (f && f.size > 0) {
+            if (encrypted) {
+              blob = f; // mantém criptografado
+            } else {
+              if (!ENC.key) { alert('Desbloqueie com a senha para importar backup legado.'); return; }
+              const enc = await encryptBytes(new Uint8Array(await f.arrayBuffer()));
+              blob = new Blob([enc.ct], { type: 'application/octet-stream' });
+              ivB64 = b64(enc.iv);
+            }
+          }
+        } catch (_) {
+          // Sem arquivo
+        }
+
+        const exists = await dbGetById(item.id);
+        const rec = {
+          id: exists ? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2)) : item.id,
+          patientName: item.patientName,
+          appointmentDate: item.appointmentDate,
+          appointmentType: item.appointmentType,
+          category: item.category,
+          fileName: item.fileName,
+          fileMime: item.fileMime || 'application/pdf',
+          fileIv: ivB64,
+          fileBlob: blob,
+          createdAt: item.createdAt || new Date().toISOString(),
+          deletedAt: item.deletedAt || null
+        };
+
+        await dbAddRecord(rec);
+        restored++;
+
+        if (restored % 50 === 0) showToast(`Importando... (${restored}/${items.length})`);
+      }
+
+      showToast(`Importados ${restored} registro(s) da pasta`);
+      await displayRecords();
+    }
+
+    const btnExportFolder = document.getElementById('btnExportFolder');
+    const btnImportFolder = document.getElementById('btnImportFolder');
+
+    btnExportFolder?.addEventListener('click', async () => {
+      try { await exportBackupToFolder(); }
+      catch (e) { console.error(e); showToast('Exportação para pasta cancelada ou falhou.', 'error'); }
+    });
+
+    btnImportFolder?.addEventListener('click', async () => {
+      try { await importBackupFromFolder(); }
+      catch (e) { console.error(e); showToast('Importação de pasta cancelada ou falhou.', 'error'); }
+    });
+
 
     inputImport.addEventListener('change', async (e) => {
       const file = e.target.files?.[0]; if (!file) return;
