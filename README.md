@@ -1,4 +1,5 @@
-<img width="946" height="954" alt="image" src="https://github.com/user-attachments/assets/3f6cf077-06cf-4bd8-8119-85bbf9399430" />
+<img width="838" height="953" alt="image" src="https://github.com/user-attachments/assets/92687616-a7fe-4cb4-af59-768f134a3999" />
+
 
 # Sistema de Gerenciamento de Prontuários  
 *(HTML + Tailwind + IndexedDB + Criptografia AES-GCM — 100% client-side)*
