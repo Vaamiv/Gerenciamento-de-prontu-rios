@@ -11,7 +11,7 @@ Os dados ficam no dispositivo do usuário (**IndexedDB**) e os arquivos são cri
 
 ---
 
-## ✨ Funcionalidades
+##  Funcionalidades
 
 - **Cadastro de prontuários** (nome, data, tipo, categoria + PDF)
 - **Consulta** com:
@@ -51,7 +51,7 @@ CDNs utilizadas:
 
 ---
 
-## 🚀 Como usar (local)
+## Como usar (local)
 
 1. Baixe/salve o `index.html`.
 2. Abra no navegador (Chrome/Edge/Firefox/Safari).
@@ -63,7 +63,7 @@ CDNs utilizadas:
 
 ---
 
-## 🔐 Criptografia & Autenticação
+##  Criptografia & Autenticação
 
 - Cada PDF é criptografado com **AES-GCM** e **IV aleatório**.
 - A chave é derivada da senha via **PBKDF2-SHA256** (`150.000` iterações).
@@ -82,7 +82,7 @@ CDNs utilizadas:
 
 ---
 
-## 💾 Armazenamento & Backup
+##  Armazenamento & Backup
 
 ### IndexedDB
 - Banco: `medicalDB`
@@ -146,7 +146,7 @@ files/<id>__<nome_sanitizado>.bin   # blobs criptografados
 
 ---
 
-## 🧭 Fluxos principais
+##  Fluxos principais
 
 ### Cadastrar
 1. **Nome do paciente**
@@ -164,7 +164,7 @@ files/<id>__<nome_sanitizado>.bin   # blobs criptografados
 
 ---
 
-## 🧪 Navegadores suportados
+##  Navegadores suportados
 
 - **Chrome/Edge** (recomendados), **Firefox**, **Safari** (versões recentes).
 - Requisitos: **IndexedDB**, **File/Blob APIs**, **Web Crypto (AES-GCM, PBKDF2)**.
@@ -172,7 +172,7 @@ files/<id>__<nome_sanitizado>.bin   # blobs criptografados
 
 ---
 
-## ⚠️ Observações de segurança
+##  Observações de segurança
 
 - O app é **local** e não substitui exigências regulatórias (ex.: LGPD/HIPAA/segurança corporativa).
 - Proteja o **dispositivo** (usuário do SO, disco criptografado, tela com senha).
@@ -181,6 +181,6 @@ files/<id>__<nome_sanitizado>.bin   # blobs criptografados
 
 ---
 
-## 🧾 Licença
+##  Licença
 
 Uso livre para fins internos. Se preferir, aplique **MIT**.
